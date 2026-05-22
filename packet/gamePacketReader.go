@@ -10,10 +10,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/Marcentus/Midir/util"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
 	"github.com/gopacket/gopacket/pcap"
-	"github.com/Marcentus/Midir/util"
 )
 
 // pcapWriter defines an interface that our SessionManager will satisfy.
@@ -386,6 +386,10 @@ func (t *GameServerPacketReader) packetLoop(payloadCh <-chan gamePacketPayload) 
 					if err != nil {
 						if err == io.EOF {
 							break readerLoop
+						}
+						if errors.Is(err, ErrTooShortPacket) {
+							nextPayload()
+							continue
 						}
 						logger.Printf("game packet parse error %v %v", lastRelSeq, err)
 						nextPayload()

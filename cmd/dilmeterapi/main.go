@@ -12,17 +12,18 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Marcentus/Midir/constants"
+	"github.com/Marcentus/Midir/packet"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gopacket/gopacket/pcap"
-	"github.com/Marcentus/Midir/constants"
-	"github.com/Marcentus/Midir/packet"
 	"golang.org/x/net/websocket"
 )
 
@@ -44,6 +45,7 @@ var staticData embed.FS
 // --- END CORRECTION ---
 
 var logger = log.New(os.Stdout, "dilmeterapi ", log.LstdFlags|log.Lshortfile)
+var debugLogFile *os.File
 
 var globalPacketCh = make(chan *packet.GamePacket, 1000)
 var cancelCapture context.CancelFunc
@@ -76,6 +78,10 @@ func main() {
 	portFlag := flag.String("port", "", "Comma-separated list of game server ports to capture from.")
 	recordPcap := flag.Bool("record-pcap", false, "Enable to record raw packet capture (.pcapng) files for sessions.")
 	flag.Parse()
+
+	if err := setupDebugLog("logs"); err != nil {
+		logger.Println("Failed to set up debug log:", err)
+	}
 
 	playerCache.Load()
 
@@ -142,6 +148,20 @@ func main() {
 	for {
 		time.Sleep(1 * time.Second)
 	}
+}
+
+func setupDebugLog(logDir string) error {
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(logDir, "debug.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	debugLogFile = f
+	packet.SetLoggerOutput(f)
+	logger.Println("Packet debug log:", f.Name())
+	return nil
 }
 
 func run(ctx context.Context, nicName string, fileName string, exitlagEnabled bool, filter string, recordPcap bool) {
@@ -269,7 +289,7 @@ func startWebServer(pub *eventPublisher, sm *SessionManager) {
 	// --- END CORRECTION ---
 
 	logger.Printf("Server listening on port %d", port)
-	
+
 	// Print preferred local network IP for other PCs to connect
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err == nil {
