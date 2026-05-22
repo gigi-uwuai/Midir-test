@@ -506,7 +506,9 @@ func (t *GameServerPacketReader) packetLoop(payloadCh <-chan gamePacketPayload) 
 						if err == io.EOF {
 							break readerLoop
 						}
-						logger.Printf("game packet parse error %v %v", st.lastRelSeq, err)
+						if !errors.Is(err, ErrTooShortPacket) {
+							logger.Printf("game packet parse error %v %v", st.lastRelSeq, err)
+						}
 						nextPayload(st)
 						continue
 					}

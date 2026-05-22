@@ -30,6 +30,7 @@ type CaptureConfig struct {
 	Port        string `json:"port"`
 	ExitLag     bool   `json:"exitlag"`
 	Promiscuous bool   `json:"promiscuous"`
+	DebugLog    bool   `json:"debugLog"`
 }
 
 func loadConfig() *CaptureConfig {
@@ -77,6 +78,7 @@ func setupRouter() http.Handler {
 			"nic":         activeNicName,
 			"exitlag":     exitlag,
 			"promiscuous": promiscuous,
+			"debugLog":    cfg != nil && cfg.DebugLog,
 			"ip":          ip,
 			"port":        port,
 		})
@@ -120,6 +122,10 @@ func setupRouter() http.Handler {
 
 		// Save the requested settings permanently
 		saveConfig(&config)
+		if err := setDebugLogging(config.DebugLog); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		var ip, port string
 		if config.ExitLag {
@@ -146,6 +152,10 @@ func setupRouter() http.Handler {
 
 		// Save settings, but preserve current aggregator/session data.
 		saveConfig(&config)
+		if err := setDebugLogging(config.DebugLog); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		var ip, port string
 		if config.ExitLag {
@@ -167,6 +177,29 @@ func setupRouter() http.Handler {
 		captureMu.Lock()
 		defer captureMu.Unlock()
 		stopPacketCaptureSync()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	r.Post("/debug-log", func(w http.ResponseWriter, req *http.Request) {
+		var payload struct {
+			DebugLog bool `json:"debugLog"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		config := loadConfig()
+		if config == nil {
+			config = &CaptureConfig{}
+		}
+		config.DebugLog = payload.DebugLog
+		saveConfig(config)
+
+		if err := setDebugLogging(payload.DebugLog); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 
