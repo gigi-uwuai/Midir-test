@@ -116,6 +116,22 @@
                   IP/port auto-detect is disabled for this experimental build.
                 </v-alert>
               </v-expand-transition>
+
+              <v-switch
+                v-model="captureConfig.debugLog"
+                label="Write debug log file"
+                color="primary"
+                hide-details
+                inset
+                class="mb-1"
+                :loading="isSavingDebugLog"
+                @update:model-value="saveDebugLogSetting"
+              ></v-switch>
+              <div class="text-caption text-grey mb-4 ml-14">
+                Creates a capped <code>logs/debug.log</code> for packet parser troubleshooting.
+                Starting capture again clears the previous debug log.
+              </div>
+
               <div class="d-flex ga-2 mt-4">
                 <v-btn
                   v-if="!captureStatus.is_running"
@@ -207,12 +223,14 @@ export default defineComponent({
     const isApplying = ref(false);
     const isStopping = ref(false);
     const isRestartingKeepSession = ref(false);
+    const isSavingDebugLog = ref(false);
     const captureConfig = ref({
       nicName: "",
       ip: "",
       port: "",
       exitlag: false,
-      promiscuous: false
+      promiscuous: false,
+      debugLog: false
     });
 
     const fetchNics = async () => {
@@ -239,6 +257,7 @@ export default defineComponent({
           if (data.nic) captureConfig.value.nicName = data.nic;
           captureConfig.value.exitlag = data.exitlag || false;
           captureConfig.value.promiscuous = data.promiscuous || false;
+          captureConfig.value.debugLog = data.debugLog || false;
           if (data.ip) captureConfig.value.ip = data.ip;
           if (data.port) captureConfig.value.port = data.port;
         }
@@ -312,6 +331,28 @@ export default defineComponent({
         console.error("Error stopping capture:", err);
       } finally {
         isStopping.value = false;
+      }
+    };
+
+    const saveDebugLogSetting = async () => {
+      isSavingDebugLog.value = true;
+      try {
+        const res = await fetch("/api/setup/debug-log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ debugLog: captureConfig.value.debugLog })
+        });
+        if (!res.ok) {
+          const errMsg = await res.text();
+          captureConfig.value.debugLog = !captureConfig.value.debugLog;
+          alert("Failed to update debug logging: " + errMsg);
+        }
+      } catch (err) {
+        captureConfig.value.debugLog = !captureConfig.value.debugLog;
+        console.error("Error updating debug logging:", err);
+        alert("Network error while updating debug logging.");
+      } finally {
+        isSavingDebugLog.value = false;
       }
     };
 
@@ -398,9 +439,11 @@ export default defineComponent({
       isApplying,
       isStopping,
       isRestartingKeepSession,
+      isSavingDebugLog,
       applyCaptureSettings,
       restartCaptureKeepSession,
       stopCapture,
+      saveDebugLogSetting,
       
       // Autodetect
       isAutodetecting,

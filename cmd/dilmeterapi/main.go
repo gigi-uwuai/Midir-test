@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 )
 
 const port = 8030
+const maxDebugLogBytes int64 = 25 * 1024 * 1024
 
 var playerCache = NewPlayerCache("player_cache.json")
 
@@ -44,6 +46,38 @@ var staticData embed.FS
 // --- END CORRECTION ---
 
 var logger = log.New(os.Stdout, "dilmeterapi ", log.LstdFlags|log.Lshortfile)
+var debugLogFile *os.File
+var debugLogMu sync.Mutex
+
+type cappedDebugWriter struct {
+	mu                 sync.Mutex
+	file               *os.File
+	written            int64
+	maxBytes           int64
+	limitNoticeWritten bool
+}
+
+func (w *cappedDebugWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.written >= w.maxBytes {
+		return len(p), nil
+	}
+	if w.written+int64(len(p)) > w.maxBytes {
+		if !w.limitNoticeWritten {
+			notice := fmt.Sprintf("\n[debug log capped at %d bytes; restart capture or toggle debug logging to start a fresh file]\n", w.maxBytes)
+			_, _ = w.file.WriteString(notice)
+			w.limitNoticeWritten = true
+		}
+		w.written = w.maxBytes
+		return len(p), nil
+	}
+
+	n, err := w.file.Write(p)
+	w.written += int64(n)
+	return len(p), err
+}
 
 var globalPacketCh = make(chan *packet.GamePacket, 1000)
 var cancelCapture context.CancelFunc
@@ -77,12 +111,61 @@ func buildPcapFilter(ips, ports string, exitlagEnabled bool) string {
 	return filter
 }
 
+func setDebugLogging(enabled bool) error {
+	debugLogMu.Lock()
+	defer debugLogMu.Unlock()
+
+	logger.SetOutput(os.Stdout)
+	packet.ConfigureLoggerOutput(os.Stdout)
+	if debugLogFile != nil {
+		debugLogFile.Close()
+		debugLogFile = nil
+	}
+
+	if !enabled {
+		return nil
+	}
+
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("failed to create debug log directory %s: %w", logDir, err)
+	}
+
+	logPath := filepath.Join(logDir, "debug.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open debug log %s: %w", logPath, err)
+	}
+
+	debugLogFile = f
+	packet.ConfigureLoggerOutput(&cappedDebugWriter{
+		file:     f,
+		maxBytes: maxDebugLogBytes,
+	})
+	logger.Printf("Debug log initialized: %s", logPath)
+	return nil
+}
+
 func main() {
 	exitlag := flag.Bool("exitlag", false, "Enable if you are using ExitLag.")
 	ip := flag.String("ip", "", "Comma-separated list of game server IPs to capture from.")
 	portFlag := flag.String("port", "", "Comma-separated list of game server ports to capture from.")
 	recordPcap := flag.Bool("record-pcap", false, "Enable to record raw packet capture (.pcapng) files for sessions.")
+	debugLog := flag.Bool("debug-log", false, "Enable verbose debug.log file output.")
 	flag.Parse()
+
+	debugLogEnabled := *debugLog
+	if cfg := loadConfig(); cfg != nil && cfg.DebugLog {
+		debugLogEnabled = true
+	}
+	if err := setDebugLogging(debugLogEnabled); err != nil {
+		logger.Println(err)
+	}
+	defer func() {
+		if debugLogFile != nil {
+			debugLogFile.Close()
+		}
+	}()
 
 	playerCache.Load()
 

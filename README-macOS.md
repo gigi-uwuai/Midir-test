@@ -8,8 +8,8 @@ The Mac does not need to run Mabinogi. It only captures packets from the mirrore
 
 For normal use, use the bundled macOS app instead of launching from Terminal.
 
-1. Download/extract the macOS release zip, or build it with `./scripts/package-macos-app.sh`.
-2. Move `Midir.app` to `Applications` or `~/Applications`.
+1. Build the macOS app with `./build.sh --app`.
+2. Move `build/Midir.app` to `Applications` or `~/Applications`.
 3. Double-click `Midir.app`.
 4. Enter the macOS **admin username** when prompted.
 5. A Terminal window opens. Enter that admin account password when prompted.
@@ -109,24 +109,34 @@ Requirements:
 - Node.js + npm
 - Xcode Command Line Tools (`xcode-select --install`)
 
-Build a native CLI binary:
+Build a native CLI/raw binary:
 
 ```bash
 ./build.sh
 ```
 
-The binary is written to `build/Midir-darwin-arm64` on Apple Silicon or `build/Midir-darwin-amd64` on Intel Macs.
+The binary is written to `build/Midir-darwin-arm64` on Apple Silicon or `build/Midir-darwin-amd64` on Intel Macs. Use this when you only need the executable, not the double-clickable app.
 
-Build the double-clickable app bundle and release zip:
+Build the double-clickable app bundle:
+
+```bash
+./build.sh --app
+```
+
+This is the recommended build command for normal macOS users. It runs the normal frontend/backend build first, then packages the result into `Midir.app`. There are no GitHub release builds for now; macOS users should build locally from source.
+
+Advanced/direct packaging command:
 
 ```bash
 ./scripts/package-macos-app.sh
 ```
 
+This does the same packaging work as `./build.sh --app`; it is kept mostly for scripts or local packaging automation.
+
 Outputs:
 
 - `build/Midir.app` — double-clickable app bundle
-- `build/Midir-macOS-arm64.zip` or `build/Midir-macOS-amd64.zip` — zip suitable for a GitHub release asset
+- `build/Midir-macOS-arm64.zip` or `build/Midir-macOS-amd64.zip` — local zip of the app bundle, useful for copying to another Mac
 
 Runtime files such as `settings.json`, logs, and session data are written relative to the app's launch directory.
 
