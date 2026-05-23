@@ -6,6 +6,48 @@ FRONT_DIR="$ROOT_DIR/front"
 STATIC_DIR="$ROOT_DIR/cmd/dilmeterapi/static"
 BUILD_DIR="$ROOT_DIR/build"
 
+usage() {
+  cat <<USAGE
+Usage: ./build.sh [--app]
+
+Builds the frontend and backend executable.
+
+Options:
+  --app      On macOS, also package build/Midir.app and build/Midir-macOS-<arch>.zip.
+  -h, --help Show this help.
+
+For a raw binary only, run: ./build.sh
+For the double-clickable macOS app, run: ./build.sh --app
+USAGE
+}
+
+PACKAGE_MACOS_APP=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --app)
+      PACKAGE_MACOS_APP=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$PACKAGE_MACOS_APP" == "1" ]]; then
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "Error: --app currently packages a macOS .app bundle and must be run on macOS." >&2
+    exit 1
+  fi
+  exec "$ROOT_DIR/scripts/package-macos-app.sh"
+fi
+
 GOOS_VALUE="${GOOS:-$(go env GOOS)}"
 GOARCH_VALUE="${GOARCH:-$(go env GOARCH)}"
 OUTPUT_NAME="${OUTPUT_NAME:-Midir-${GOOS_VALUE}-${GOARCH_VALUE}}"
@@ -35,3 +77,6 @@ GOOS="$GOOS_VALUE" GOARCH="$GOARCH_VALUE" go build -ldflags="-s -w" -trimpath -v
 
 echo
 echo "Build complete: $BUILD_DIR/$OUTPUT_NAME"
+if [[ "$GOOS_VALUE" == "darwin" ]]; then
+  echo "For the double-clickable macOS app bundle, run: ./build.sh --app"
+fi
